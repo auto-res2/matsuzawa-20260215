@@ -21,20 +21,30 @@ from src.preprocess import load_dataset
 
 def get_llm_client(cfg):
     """Initialize LLM client based on config."""
-    provider = cfg.model.provider
+    # [VALIDATOR FIX - Attempt 1]
+    # [PROBLEM]: Missing key 'method' when accessing cfg.method
+    # [CAUSE]: Config fields are nested under cfg.run.* due to Hydra defaults structure
+    # [FIX]: Changed cfg.model to cfg.run.model
+    #
+    # [OLD CODE]:
+    # provider = cfg.model.provider
+    # api_key = os.environ.get(cfg.model.api_key_env)
+    #
+    # [NEW CODE]:
+    provider = cfg.run.model.provider
     
     if provider == "openai":
         import openai
-        api_key = os.environ.get(cfg.model.api_key_env)
+        api_key = os.environ.get(cfg.run.model.api_key_env)
         if not api_key:
-            raise ValueError(f"Environment variable {cfg.model.api_key_env} not set")
+            raise ValueError(f"Environment variable {cfg.run.model.api_key_env} not set")
         client = openai.OpenAI(api_key=api_key)
         return client
     elif provider == "anthropic":
         import anthropic
-        api_key = os.environ.get(cfg.model.api_key_env)
+        api_key = os.environ.get(cfg.run.model.api_key_env)
         if not api_key:
-            raise ValueError(f"Environment variable {cfg.model.api_key_env} not set")
+            raise ValueError(f"Environment variable {cfg.run.model.api_key_env} not set")
         client = anthropic.Anthropic(api_key=api_key)
         return client
     else:
@@ -43,10 +53,22 @@ def get_llm_client(cfg):
 
 def call_llm(client, cfg, prompt: str) -> str:
     """Call LLM with given prompt."""
-    provider = cfg.model.provider
-    model_name = cfg.model.name
-    temperature = cfg.model.temperature
-    max_tokens = cfg.model.max_tokens
+    # [VALIDATOR FIX - Attempt 1]
+    # [PROBLEM]: Missing key 'method' when accessing cfg.method
+    # [CAUSE]: Config fields are nested under cfg.run.* due to Hydra defaults structure
+    # [FIX]: Changed cfg.model to cfg.run.model
+    #
+    # [OLD CODE]:
+    # provider = cfg.model.provider
+    # model_name = cfg.model.name
+    # temperature = cfg.model.temperature
+    # max_tokens = cfg.model.max_tokens
+    #
+    # [NEW CODE]:
+    provider = cfg.run.model.provider
+    model_name = cfg.run.model.name
+    temperature = cfg.run.model.temperature
+    max_tokens = cfg.run.model.max_tokens
     
     if provider == "openai":
         response = client.chat.completions.create(
@@ -399,8 +421,23 @@ def main():
     
     print(f"Starting inference for run: {run_id}")
     print(f"Mode: {mode}")
-    print(f"Method: {cfg.method.type}")
-    print(f"Dataset: {cfg.dataset.name}")
+    # [VALIDATOR FIX - Attempt 1]
+    # [PROBLEM]: Missing key 'method' when accessing cfg.method
+    # [CAUSE]: Config fields are nested under cfg.run.* due to Hydra defaults structure
+    # [FIX]: Changed cfg.method, cfg.dataset, cfg.inference, cfg.model to cfg.run.*
+    #
+    # [OLD CODE]:
+    # print(f"Method: {cfg.method.type}")
+    # print(f"Dataset: {cfg.dataset.name}")
+    # dataset = load_dataset(cfg.dataset)
+    # num_samples = cfg.inference.num_examples
+    # print(f"\nInitializing LLM client: {cfg.model.provider}/{cfg.model.name}")
+    # print(f"\nRunning inference with method: {cfg.method.type}")
+    # method_type = cfg.method.type
+    #
+    # [NEW CODE]:
+    print(f"Method: {cfg.run.method.type}")
+    print(f"Dataset: {cfg.run.dataset.name}")
     
     # Initialize WandB
     wandb_enabled = cfg.wandb.mode == "online"
@@ -417,21 +454,21 @@ def main():
         print("WandB disabled (offline mode)")
     
     # Load dataset
-    print(f"\nLoading dataset: {cfg.dataset.name}")
-    dataset = load_dataset(cfg.dataset)
-    num_samples = cfg.inference.num_examples
+    print(f"\nLoading dataset: {cfg.run.dataset.name}")
+    dataset = load_dataset(cfg.run.dataset)
+    num_samples = cfg.run.inference.num_examples
     dataset = dataset[:num_samples]
     print(f"Loaded {len(dataset)} examples")
     
     # Initialize LLM client
-    print(f"\nInitializing LLM client: {cfg.model.provider}/{cfg.model.name}")
+    print(f"\nInitializing LLM client: {cfg.run.model.provider}/{cfg.run.model.name}")
     client = get_llm_client(cfg)
     
     # Run inference
-    print(f"\nRunning inference with method: {cfg.method.type}")
+    print(f"\nRunning inference with method: {cfg.run.method.type}")
     results = []
     
-    method_type = cfg.method.type
+    method_type = cfg.run.method.type
     
     for i, example in enumerate(tqdm(dataset, desc="Processing examples")):
         question = example["question"]

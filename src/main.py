@@ -34,16 +34,32 @@ def main(cfg: DictConfig) -> None:
         # Override settings for sanity check
         print(f"\n[MODE: {mode}] Applying sanity_check overrides...")
         
+        # [VALIDATOR FIX - Attempt 1]
+        # [PROBLEM]: AttributeError when accessing cfg.inference and cfg.dataset
+        # [CAUSE]: Config fields are nested under cfg.run.* due to Hydra defaults structure
+        # [FIX]: Changed cfg.inference to cfg.run.inference and cfg.dataset to cfg.run.dataset
+        #
+        # [OLD CODE]:
+        # if "inference" in cfg and "num_examples" in cfg.inference:
+        #     original_num = cfg.inference.num_examples
+        #     cfg.inference.num_examples = min(10, original_num)
+        #     print(f"  - inference.num_examples: {original_num} -> {cfg.inference.num_examples}")
+        # if "dataset" in cfg and "num_samples" in cfg.dataset:
+        #     original_num = cfg.dataset.num_samples
+        #     cfg.dataset.num_samples = min(10, original_num)
+        #     print(f"  - dataset.num_samples: {original_num} -> {cfg.dataset.num_samples}")
+        #
+        # [NEW CODE]:
         # Reduce samples for quick validation
-        if "inference" in cfg and "num_examples" in cfg.inference:
-            original_num = cfg.inference.num_examples
-            cfg.inference.num_examples = min(10, original_num)
-            print(f"  - inference.num_examples: {original_num} -> {cfg.inference.num_examples}")
+        if "run" in cfg and "inference" in cfg.run and "num_examples" in cfg.run.inference:
+            original_num = cfg.run.inference.num_examples
+            cfg.run.inference.num_examples = min(10, original_num)
+            print(f"  - inference.num_examples: {original_num} -> {cfg.run.inference.num_examples}")
         
-        if "dataset" in cfg and "num_samples" in cfg.dataset:
-            original_num = cfg.dataset.num_samples
-            cfg.dataset.num_samples = min(10, original_num)
-            print(f"  - dataset.num_samples: {original_num} -> {cfg.dataset.num_samples}")
+        if "run" in cfg and "dataset" in cfg.run and "num_samples" in cfg.run.dataset:
+            original_num = cfg.run.dataset.num_samples
+            cfg.run.dataset.num_samples = min(10, original_num)
+            print(f"  - dataset.num_samples: {original_num} -> {cfg.run.dataset.num_samples}")
         
         # Use separate W&B project for sanity checks
         if "wandb" in cfg and "project" in cfg.wandb:
