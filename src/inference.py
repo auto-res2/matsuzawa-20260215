@@ -249,11 +249,21 @@ def extract_final_answer(text: str) -> Optional[float]:
     # ]
     #
     # [NEW CODE]:
+    
+    # [VALIDATOR FIX - Attempt 2]
+    # [PROBLEM]: 7 examples have final_answer=None (e.g., "spend $16.00", "used 12 tomatoes", "have €77")
+    # [CAUSE]: Missing patterns for common verb+amount constructions like "spend/receive/use/have X"
+    # [FIX]: Added verb patterns (spend, receive, use, have, picks up) and support for € currency symbol
+    #
+    # [OLD CODE]: (patterns missing verbs like spend, receive, use, have)
+    #
+    # [NEW CODE]:
+    
     # High-priority patterns (explicit answer markers) - use first match
     high_priority_patterns = [
-        r"REVISED:\s*\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # REVISED: answer
-        r"####\s*\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # #### X (GSM8K final answer marker)
-        r"final[\"']?\s*:\s*\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # final: answer
+        r"REVISED:\s*[$€£¥]?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # REVISED: answer
+        r"####\s*[$€£¥]?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # #### X (GSM8K final answer marker)
+        r"final[\"']?\s*:\s*[$€£¥]?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # final: answer
     ]
     
     for pattern in high_priority_patterns:
@@ -266,35 +276,41 @@ def extract_final_answer(text: str) -> Optional[float]:
                 continue
     
     # Medium-priority patterns (contextual clues) - use last match
-    # Reordered to prioritize explicit answer indicators over generic "=" patterns
-    # Note: patterns are checked in order; first match in pattern order wins (but uses LAST occurrence of that pattern)
-    sentences = text.split('.')
+    # Focus on last sentence to avoid capturing intermediate steps
+    sentences = [s.strip() for s in text.split('.') if s.strip()]
     last_sentence = sentences[-1] if sentences else text
     
     medium_priority_patterns = [
-        r"(?:total|profit|earnings?|makes?)\s+(?:of\s+)?\$([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # "total $18", "makes $18" with dollar sign - most explicit
-        r"answer[\"']?\s*:?\s*(?:is\s+)?\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # answer: X or answer is X
-        r"(?:total|profit)\s+(?:of\s+)?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # "total 18", "profit 70000" without dollar sign
-        r"=\s*\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # = X (prefer last occurrence) - least specific
+        # Verb + amount patterns (common in final conclusions)
+        r"(?:spend|spends|receives?|have|has|uses?|used|picks?\s+up|earns?|makes?)\s+[$€£¥]([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",
+        # Total/profit with currency
+        r"(?:total|profit|earnings?)\s+(?:of\s+)?[$€£¥]([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",
+        # Answer patterns
+        r"answer[\"']?\s*:?\s*(?:is\s+)?[$€£¥]?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",
+        # Total/profit without currency
+        r"(?:total|profit)\s+(?:of\s+)?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",
+        # Equals sign (least specific)
+        r"=\s*[$€£¥]?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",
     ]
     
+    # Search in last sentence first (most reliable for final answer)
     for pattern in medium_priority_patterns:
-        # Find all matches and use the last one
-        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        matches = list(re.finditer(pattern, last_sentence, re.IGNORECASE))
         if matches:
-            match = matches[-1]  # Use last match
+            match = matches[-1]  # Use last match in last sentence
             try:
                 num_str = match.group(1).replace(',', '')
                 return float(num_str)
             except (ValueError, IndexError):
                 continue
     
-    # Low-priority patterns (look for numbers with units or at end) - search last sentence first, then full text
+    # Low-priority patterns (look for numbers with units or at end)
     low_priority_patterns = [
-        r"<<[^>]+>>\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # <<expr=18>>18 (GSM8K step marker)
-        r"\$([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*\.?\s*$",  # $18 at end with optional period
-        r"(?:is|are)\s+\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # "is $18"
-        r"([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s+(?:dollars?|bolts?|meters?|minutes?|sheep|glasses|cups|hours?|miles?)",  # number before unit
+        r"<<[^>]+>>[$€£¥]?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # <<expr=18>>18 (GSM8K step marker)
+        r"[$€£¥]([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*\.?\s*$",  # $18 at end with optional period
+        r"(?:is|are|have|has)\s+[$€£¥]?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # "is/are/have/has X"
+        # Number + unit patterns (expanded unit list, allow optional adjective before unit)
+        r"([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s+(?:\w+\s+)?(?:dollars?|euros?|pounds?|bolts?|meters?|minutes?|sheets?|pieces?|tomatoes?|crabs?|sheep|glasses|cups|hours?|miles?|people|items?)",
         r"([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*\.?\s*$",  # Number at end (fallback)
     ]
     
@@ -309,8 +325,8 @@ def extract_final_answer(text: str) -> Optional[float]:
             except (ValueError, IndexError):
                 continue
     
-    # Fallback: search full text
-    for pattern in low_priority_patterns:
+    # Fallback: search full text (for edge cases where answer might not be in last sentence)
+    for pattern in medium_priority_patterns + low_priority_patterns:
         matches = list(re.finditer(pattern, text, re.IGNORECASE))
         if matches:
             match = matches[-1]  # Use last match

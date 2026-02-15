@@ -16,17 +16,31 @@ def extract_answer_number(answer_text: str) -> float:
     Extract numeric answer from answer text.
     Handles GSM8K format: '#### 42' or similar patterns.
     """
+    # [VALIDATOR FIX - Attempt 2]
+    # [PROBLEM]: Ground truth values incorrect for numbers with commas (e.g., "#### 2,125" parsed as 2.0 instead of 2125.0)
+    # [CAUSE]: Regex pattern [+-]?\d+\.?\d* doesn't match comma-separated numbers, stops at first digit before comma
+    # [FIX]: Updated regex to include optional comma separators: [+-]?\d+(?:,\d{3})*(?:\.\d+)?
+    #
+    # [OLD CODE]:
+    # if "####" in answer_text:
+    #     match = re.search(r"####\s*([+-]?\d+\.?\d*)", answer_text)
+    # numbers = re.findall(r"([+-]?\d+\.?\d*)", answer_text)
+    #
+    # [NEW CODE]:
+    
     # Try GSM8K format first
     if "####" in answer_text:
-        match = re.search(r"####\s*([+-]?\d+\.?\d*)", answer_text)
+        match = re.search(r"####\s*([+-]?\d+(?:,\d{3})*(?:\.\d+)?)", answer_text)
         if match:
-            return float(match.group(1))
+            # Remove commas before converting to float
+            return float(match.group(1).replace(',', ''))
     
     # Try general number extraction
-    # Look for last number in text
-    numbers = re.findall(r"([+-]?\d+\.?\d*)", answer_text)
+    # Look for last number in text (with optional comma separators)
+    numbers = re.findall(r"([+-]?\d+(?:,\d{3})*(?:\.\d+)?)", answer_text)
     if numbers:
-        return float(numbers[-1])
+        # Remove commas before converting to float
+        return float(numbers[-1].replace(',', ''))
     
     raise ValueError(f"Could not extract answer from: {answer_text}")
 
