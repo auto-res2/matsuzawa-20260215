@@ -1,0 +1,29 @@
+# MC-CoT (Metacognitive Self-Check Chain-of-Thought) on GSM8K - Baseline
+run_id: comparative-1-gsm8k
+
+method:
+  type: mc-cot
+  name: "Metacognitive Self-Check CoT"
+  description: "Two-pass CoT with metacognitive self-check (baseline)"
+  pass1_prompt_type: "standard_solve"
+  pass2_prompt_type: "self_check"
+  use_deterministic_audit: false
+
+model:
+  provider: openai
+  name: gpt-4
+  temperature: 0.0
+  max_tokens: 2048
+  api_key_env: OPENAI_API_KEY
+
+dataset:
+  name: gsm8k
+  split: test
+  num_samples: 200
+  cache_dir: .cache
+
+inference:
+  num_examples: 200
+  batch_size: 1
+  save_intermediate: true
+  output_format: json

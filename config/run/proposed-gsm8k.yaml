@@ -1,0 +1,29 @@
+# CF-CoT (Contract-and-Falsify Chain-of-Thought) on GSM8K
+run_id: proposed-gsm8k
+
+method:
+  type: cf-cot
+  name: "Contract-and-Falsify CoT"
+  description: "Two-pass CoT with structured contract and deterministic arithmetic auditing"
+  pass1_prompt_type: "contract_solve"
+  pass2_prompt_type: "falsify_revise"
+  use_deterministic_audit: true
+
+model:
+  provider: openai
+  name: gpt-4
+  temperature: 0.0
+  max_tokens: 2048
+  api_key_env: OPENAI_API_KEY
+
+dataset:
+  name: gsm8k
+  split: test
+  num_samples: 200
+  cache_dir: .cache
+
+inference:
+  num_examples: 200
+  batch_size: 1
+  save_intermediate: true
+  output_format: json
