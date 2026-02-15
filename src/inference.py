@@ -232,20 +232,91 @@ def audit_arithmetic_contract(contract: Dict) -> Dict:
 
 def extract_final_answer(text: str) -> Optional[float]:
     """Extract numeric final answer from text."""
-    # Look for explicit patterns
-    patterns = [
-        r"REVISED:\s*([+-]?\d+\.?\d*)",
-        r"final[\"']?\s*:\s*([+-]?\d+\.?\d*)",
-        r"answer[\"']?\s*:?\s*([+-]?\d+\.?\d*)",
-        r"####\s*([+-]?\d+\.?\d*)",  # GSM8K format
-        r"([+-]?\d+\.?\d*)\s*$",  # Number at end
+    # [VALIDATOR FIX - Attempt 1]
+    # [PROBLEM]: Low valid output rate (2/10 = 20%) - most examples have final_answer=null
+    # [CAUSE]: extract_final_answer regex patterns don't match common GSM8K answer formats like "<<9*2=18>>18", "$18", or "= $18"
+    # [FIX]: Added more comprehensive patterns to match GSM8K-style answers, dollar amounts, and numbers followed by units/punctuation.
+    #        Patterns are ordered by specificity - more explicit answer markers first, then contextual clues, then fallbacks.
+    #        We search for the LAST occurrence of lower-priority patterns (like "= X") to get the final answer rather than intermediate steps.
+    #
+    # [OLD CODE]:
+    # patterns = [
+    #     r"REVISED:\s*([+-]?\d+\.?\d*)",
+    #     r"final[\"']?\s*:\s*([+-]?\d+\.?\d*)",
+    #     r"answer[\"']?\s*:?\s*([+-]?\d+\.?\d*)",
+    #     r"####\s*([+-]?\d+\.?\d*)",  # GSM8K format
+    #     r"([+-]?\d+\.?\d*)\s*$",  # Number at end
+    # ]
+    #
+    # [NEW CODE]:
+    # High-priority patterns (explicit answer markers) - use first match
+    high_priority_patterns = [
+        r"REVISED:\s*\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # REVISED: answer
+        r"####\s*\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # #### X (GSM8K final answer marker)
+        r"final[\"']?\s*:\s*\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # final: answer
     ]
     
-    for pattern in patterns:
+    for pattern in high_priority_patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             try:
-                return float(match.group(1))
+                num_str = match.group(1).replace(',', '')
+                return float(num_str)
+            except (ValueError, IndexError):
+                continue
+    
+    # Medium-priority patterns (contextual clues) - use last match
+    # Reordered to prioritize explicit answer indicators over generic "=" patterns
+    # Note: patterns are checked in order; first match in pattern order wins (but uses LAST occurrence of that pattern)
+    sentences = text.split('.')
+    last_sentence = sentences[-1] if sentences else text
+    
+    medium_priority_patterns = [
+        r"(?:total|profit|earnings?|makes?)\s+(?:of\s+)?\$([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # "total $18", "makes $18" with dollar sign - most explicit
+        r"answer[\"']?\s*:?\s*(?:is\s+)?\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # answer: X or answer is X
+        r"(?:total|profit)\s+(?:of\s+)?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # "total 18", "profit 70000" without dollar sign
+        r"=\s*\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # = X (prefer last occurrence) - least specific
+    ]
+    
+    for pattern in medium_priority_patterns:
+        # Find all matches and use the last one
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        if matches:
+            match = matches[-1]  # Use last match
+            try:
+                num_str = match.group(1).replace(',', '')
+                return float(num_str)
+            except (ValueError, IndexError):
+                continue
+    
+    # Low-priority patterns (look for numbers with units or at end) - search last sentence first, then full text
+    low_priority_patterns = [
+        r"<<[^>]+>>\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # <<expr=18>>18 (GSM8K step marker)
+        r"\$([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*\.?\s*$",  # $18 at end with optional period
+        r"(?:is|are)\s+\$?([+-]?\d+(?:,\d{3})*(?:\.\d+)?)",  # "is $18"
+        r"([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s+(?:dollars?|bolts?|meters?|minutes?|sheep|glasses|cups|hours?|miles?)",  # number before unit
+        r"([+-]?\d+(?:,\d{3})*(?:\.\d+)?)\s*\.?\s*$",  # Number at end (fallback)
+    ]
+    
+    # Try last sentence first
+    for pattern in low_priority_patterns:
+        matches = list(re.finditer(pattern, last_sentence, re.IGNORECASE))
+        if matches:
+            match = matches[-1]  # Use last match in last sentence
+            try:
+                num_str = match.group(1).replace(',', '')
+                return float(num_str)
+            except (ValueError, IndexError):
+                continue
+    
+    # Fallback: search full text
+    for pattern in low_priority_patterns:
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+        if matches:
+            match = matches[-1]  # Use last match
+            try:
+                num_str = match.group(1).replace(',', '')
+                return float(num_str)
             except (ValueError, IndexError):
                 continue
     
